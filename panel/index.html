@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Voice Separator</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- ============ SETUP (pehli dafa) ============ -->
+  <div id="viewSetup" class="wrap" style="display:none">
+    <section>
+      <h2>Setup</h2>
+      <p class="lead">Voice Separator needs its AI components. This is a <b>one-time download</b>. After that it works fully offline.</p>
+    </section>
+
+    <section>
+      <h2>Your computer</h2>
+      <div id="detectInfo" class="src">Checking…</div>
+      <div id="detectWarn" class="hint warn"></div>
+      <select id="packSelect" class="sel" disabled></select>
+      <div id="dlSize" class="hint"></div>
+    </section>
+
+    <section>
+      <button id="btnInstall" class="btn primary" disabled>Download essential files</button>
+      <button id="btnInstallCancel" class="btn danger" style="display:none">Pause</button>
+      <div class="bar"><div id="setupFill"></div></div>
+      <div id="setupStatus" class="status">&nbsp;</div>
+      <a id="lnkLocal" class="link" href="#">Already have the file? Install from file…</a>
+      <a id="lnkBack" class="link" href="#" style="display:none">Back</a>
+    </section>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div id="viewMain" class="wrap" style="display:none">
+
+    <section>
+      <h2>1. Source</h2>
+      <div id="srcName" class="src empty">No file selected</div>
+      <div class="row">
+        <button id="btnSelected" class="btn">Use selected clip</button>
+        <button id="btnBrowse" class="btn ghost">Browse…</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Noise removal</h2>
+      <div class="slider-row">
+        <input type="range" id="strength" min="0" max="100" value="100">
+        <span id="strengthVal">100%</span>
+      </div>
+      <p class="hint">100% = remove all noise. Lower it if the voice sounds robotic.</p>
+    </section>
+
+    <section>
+      <h2>3. Import into project</h2>
+      <label class="chk"><input type="checkbox" id="optClean" checked> Clean voice</label>
+      <label class="chk"><input type="checkbox" id="optOrig"> Original voice (no denoise)</label>
+      <label class="chk"><input type="checkbox" id="optMusic" checked> Music / background</label>
+    </section>
+
+    <section>
+      <button id="btnRun" class="btn primary" disabled>Process</button>
+      <button id="btnCancel" class="btn danger" style="display:none">Cancel</button>
+      <div class="bar"><div id="barFill"></div></div>
+      <div id="status" class="status">Ready.</div>
+    </section>
+
+    <section class="foot">
+      <span id="rtInfo"></span>
+      <a id="btnUpdate" class="link" href="#" style="display:none">Update available</a>
+      <a id="lnkReinstall" class="link" href="#">Reinstall / change</a>
+    </section>
+  </div>
+
+  <script src="js/CSInterface.js"></script>
+  <script src="js/installer.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

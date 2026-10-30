@@ -1,0 +1,69 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: #232323;
+  color: #d4d4d4;
+  font: 12px/1.4 "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  user-select: none;
+}
+.wrap { padding: 12px; }
+section { margin-bottom: 16px; }
+h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #8f8f8f;
+}
+.src {
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: #1a1a1a;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.src.empty { color: #777; }
+.row { display: flex; gap: 6px; }
+.btn {
+  flex: 1;
+  padding: 7px 10px;
+  background: #3b3b3b;
+  color: #eee;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: #474747; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.ghost { flex: 0 0 auto; background: transparent; }
+.btn.primary { width: 100%; background: #2d7ff9; border-color: #2d7ff9; color: #fff; font-weight: 600; padding: 9px; }
+.btn.primary:hover:not(:disabled) { background: #4a91fa; }
+.btn.danger { width: 100%; background: #8a2b2b; border-color: #8a2b2b; padding: 9px; }
+.slider-row { display: flex; align-items: center; gap: 10px; }
+.slider-row input { flex: 1; }
+#strengthVal { width: 38px; text-align: right; }
+.hint { margin: 6px 0 0; color: #7d7d7d; }
+.chk { display: block; margin: 5px 0; cursor: pointer; }
+.bar { height: 6px; margin-top: 12px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
+#barFill { height: 100%; width: 0; background: #2d7ff9; transition: width .25s; }
+.status { margin-top: 8px; min-height: 34px; color: #b5b5b5; user-select: text; word-break: break-word; }
+.status.err { color: #ff7b7b; }
+.status.ok { color: #7bd88f; }
+
+/* ---- setup view ---- */
+.lead { margin: 0; color: #c4c4c4; line-height: 1.5; }
+.sel {
+  width: 100%; margin-top: 8px; padding: 6px 8px;
+  background: #1a1a1a; color: #ddd; border: 1px solid #3a3a3a; border-radius: 4px; font: inherit;
+}
+.hint.warn { color: #e8b04a; }
+.link { display: block; margin-top: 12px; color: #6aa9ff; cursor: pointer; text-decoration: none; }
+.link:hover { text-decoration: underline; }
+#setupFill { height: 100%; width: 0; background: #2d7ff9; transition: width .25s; }
+.foot { margin-top: 20px; padding-top: 10px; border-top: 1px solid #333; color: #7d7d7d; font-size: 11px; }
+.foot .link { display: inline-block; margin: 6px 12px 0 0; font-size: 11px; }

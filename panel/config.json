@@ -1,0 +1,5 @@
+{
+  "baseUrl": "https://YOUR-HOST/voicesep/v1/",
+  "devPython": "",
+  "ffmpeg": "ffmpeg"
+}
