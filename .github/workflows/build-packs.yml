@@ -1,0 +1,58 @@
+name: Build packs and release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number (jaise 1.0.0)"
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: win-cpu,   os: windows-latest }
+          - { id: mac-arm64, os: macos-15 }
+          - { id: mac-x64,   os: macos-15-intel }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Build pack
+        run: python tools/build_pack.py --id ${{ matrix.id }} --version ${{ github.event.inputs.version }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pack-${{ matrix.id }}
+          path: dist/*
+          compression-level: 0
+
+  release:
+    needs: build
+    if: ${{ !cancelled() && needs.build.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pack-*
+          merge-multiple: true
+          path: dist
+      - name: Customer panel zip
+        run: python3 tools/make_customer_zip.py --base-url "https://github.com/${{ github.repository }}/releases/latest/download/" --version "${{ github.event.inputs.version }}"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          TAG="v${{ github.event.inputs.version }}"
+          gh release delete "$TAG" --yes --cleanup-tag || true
+          gh release create "$TAG" dist/* --title "Voice Separator $TAG" --notes "Packs aur customer panel zip."
