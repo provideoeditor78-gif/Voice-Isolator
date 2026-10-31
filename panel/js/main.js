@@ -9,9 +9,10 @@
   var fs = require('fs');
   var path = require('path');
   var spawn = require('child_process').spawn;
+  var os = require('os');
 
   var extPath = cs.getSystemPath(SystemPath.EXTENSION);
-  var state = { src: null, proc: null, cancelled: false, installing: false, ctl: null, packInfo: null, reinstall: false };
+  var state = { src: null, range: null, log: [], proc: null, cancelled: false, installing: false, ctl: null, packInfo: null, reinstall: false };
 
   function $(id) { return document.getElementById(id); }
 
@@ -50,16 +51,41 @@
     $('btnRun').style.display = busy ? 'none' : '';
     $('btnCancel').style.display = busy ? '' : 'none';
     $('btnSelected').disabled = busy;
+    $('btnPreview').disabled = busy || !state.src;
     $('btnBrowse').disabled = busy;
   }
 
-  function setSource(p) {
+  function fmtSec(t) {
+    t = Math.max(0, t);
+    var m = Math.floor(t / 60), sec = t - m * 60;
+    return m + ':' + (sec < 10 ? '0' : '') + sec.toFixed(1);
+  }
+
+  function setSource(p, range) {
     state.src = p;
+    state.range = (range && range.end > range.start) ? range : null;
     var el = $('srcName');
     el.textContent = p ? path.basename(p) : 'No file selected';
     el.title = p || '';
     el.className = 'src' + (p ? '' : ' empty');
     $('btnRun').disabled = !p;
+    $('btnPreview').disabled = !p;
+    if (state.range) {
+      $('rangeText').textContent = 'Process only the selected part (' + fmtSec(state.range.start) + ' \u2013 ' +
+        fmtSec(state.range.end) + ', ' + Math.round(state.range.end - state.range.start) + ' s)';
+      $('rangeRow').style.display = '';
+    } else {
+      $('rangeRow').style.display = 'none';
+    }
+  }
+
+  function currentRange() {
+    return (state.range && $('optRange').checked) ? state.range : null;
+  }
+
+  function logAdd(msg) {
+    state.log.push(new Date().toISOString().slice(11, 19) + '  ' + String(msg).slice(0, 600));
+    if (state.log.length > 40) state.log.shift();
   }
 
   /* ---------- setup / download ---------- */
@@ -83,15 +109,17 @@
     $('btnInstall').disabled = true;
     $('dlSize').textContent = 'Checking download\u2026';
     var url;
-    try { url = baseUrl(); } catch (e) { $('dlSize').textContent = ''; setSetupStatus(e.message, 'err'); return Promise.resolve(); }
+    try { url = baseUrl(); } catch (e) { $('dlSize').textContent = ''; setSetupStatus(e.message, 'err'); return Promise.resolve(false); }
     return VSInstaller.fetchPackInfo(url, id).then(function (info) {
       state.packInfo = info;
       $('dlSize').textContent = 'Download size: ' + VSInstaller.fmtBytes(info.size) + '  \u2022  version ' + info.version;
       $('btnInstall').disabled = false;
       setSetupStatus('');
+      return true;
     }).catch(function (e) {
       $('dlSize').textContent = '';
       setSetupStatus(VSInstaller.friendlyError(e), 'err');
+      return false;
     });
   }
 
@@ -119,7 +147,14 @@
         sel.appendChild(o);
       });
       sel.disabled = false;
-      return loadPackInfo(d.recommended);
+      return loadPackInfo(d.recommended).then(function (ok) {
+        if (!ok && d.recommended === 'win-gpu') {
+          // GPU pack release mein nahi he: CPU pack par wapas aao
+          sel.value = 'win-cpu';
+          $('detectWarn').textContent = 'The GPU pack is not available right now. CPU pack selected.';
+          return loadPackInfo('win-cpu');
+        }
+      });
     }).catch(function (e) {
       $('detectInfo').textContent = 'Could not check your computer.';
       setSetupStatus(VSInstaller.friendlyError(e), 'err');
@@ -235,7 +270,7 @@
 
   var STAGE_LABEL = {
     convert: 'Reading audio\u2026',
-    separate: 'Separating voice and music\u2026',
+    separate: 'Separating voice and music\u2026 (Best quality takes longer)',
     denoise: 'Removing noise\u2026',
     hiss: 'Removing leftover hiss\u2026',
     noise: 'Extracting noise layer\u2026',
@@ -243,12 +278,13 @@
     export: 'Saving files\u2026'
   };
 
-  function runEngine(src, outDir, strength, enhance, enhParams, cleanup, hiss, onProgress) {
+  function runEngine(src, outDir, strength, enhance, enhParams, cleanup, hiss, extraArgs, onProgress) {
     return new Promise(function (resolve, reject) {
       var eng = resolveEngine();
       var args = eng.args.concat([src, '-o', outDir, '--strength', String(strength),
         '--enhance', enhance, '--cleanup', cleanup, '--hiss', String(hiss), '--enhance-params', JSON.stringify(enhParams || {}),
-        '--ffmpeg', eng.ffmpeg, '--runtime', eng.runtime]);
+        '--ffmpeg', eng.ffmpeg, '--runtime', eng.runtime].concat(extraArgs || []));
+      logAdd('engine args: ' + args.slice(1).map(function (x) { return (x.indexOf(path.sep) >= 0 || x.indexOf('/') >= 0) ? path.basename(x) : x; }).join(' '));
       var child;
       try { child = spawn(eng.cmd, args, { windowsHide: true }); }
       catch (e) { return reject(new Error('Could not start engine: ' + e.message)); }
@@ -271,12 +307,13 @@
           try { m = JSON.parse(line); } catch (e) { return; }
           if (m.stage === 'error') engineError = m.message;
           else if (m.stage === 'done') result = m.files;
-          else if (m.stage === 'warn') warnings.push(m.message);
+          else if (m.stage === 'warn') { warnings.push(m.message); logAdd('WARN ' + m.message); }
           else onProgress(m);
         });
       });
 
       child.stderr.on('data', function (d) { errTail = (errTail + d.toString()).slice(-500); });
+      child.on('close', function () { if (errTail) logAdd('stderr: ' + errTail.slice(-300)); });
 
       child.on('close', function (code) {
         state.proc = null;
@@ -292,7 +329,7 @@
   function useSelected() {
     setStatus('Looking for selected clip\u2026');
     callHost('getSelectedMedia').then(function (r) {
-      setSource(r.path);
+      setSource(r.path, (typeof r.rangeStart === 'number' && typeof r.rangeEnd === 'number') ? { start: r.rangeStart, end: r.rangeEnd } : null);
       setStatus('Ready.');
     }).catch(function (e) { setStatus(e.message, 'err'); });
   }
@@ -300,10 +337,10 @@
   function browse() {
     var r = window.cep.fs.showOpenDialogEx(false, false, 'Select audio or video file', '',
       ['mp4', 'mov', 'mxf', 'mkv', 'avi', 'wav', 'mp3', 'aif', 'aiff', 'm4a', 'flac']);
-    if (r && r.data && r.data.length) { setSource(r.data[0]); setStatus('Ready.'); }
+    if (r && r.data && r.data.length) { setSource(r.data[0], null); setStatus('Ready.'); }
   }
 
-  function run() {
+  function run(preview) {
     if (!state.src) return;
     VSLicense.check().then(function (st) {
       if (st.state !== 'valid') {
@@ -311,14 +348,19 @@
         showLicense(st.message || '', st.message ? 'err' : '');
         return;
       }
-      doRun();
+      doRun(preview === true);
     });
   }
 
-  function doRun() {
+  function doRun(preview) {
     var strength = parseInt($('strength').value, 10);
     var name = path.basename(state.src, path.extname(state.src));
-    var outDir = path.join(path.dirname(state.src), 'VoiceIsolator_' + name);
+    var outDir = preview ? path.join(os.tmpdir(), 'VoiceIsolator_preview') : path.join(path.dirname(state.src), 'VoiceIsolator_' + name);
+    var rng = currentRange();
+    var extra = [];
+    if (rng) { extra.push('--start', rng.start.toFixed(3), '--duration', (rng.end - rng.start).toFixed(3)); }
+    extra.push('--quality', $('qualityLevel').value);
+    if (preview) { extra.push('--preview', '15', '--keep-input'); }
 
     state.cancelled = false;
     setBusy(true);
@@ -326,10 +368,11 @@
     setStatus('Starting\u2026');
 
     var enhance = $('enhanceLevel').value;
-    runEngine(state.src, outDir, strength, enhance, readEnhParams(), $('cleanupLevel').value, parseInt($('hissAmt').value, 10), function (m) {
+    runEngine(state.src, outDir, strength, enhance, readEnhParams(), $('cleanupLevel').value, parseInt($('hissAmt').value, 10), extra, function (m) {
       setProgress(m.percent);
       setStatus(STAGE_LABEL[m.stage] || m.stage);
     }).then(function (files) {
+      if (preview) { showPreview(files); return; }
       var note = (files.__warnings && files.__warnings.length) ? ' Note: ' + files.__warnings.join(' ') : '';
 
       // Kaun si voice "main" hai (original naam wali): enhanced > clean > original
@@ -355,6 +398,7 @@
         bin: 'Voice Isolator',
         src: state.src,
         timeline: $('optTimeline').checked,
+        srcOffset: rng ? rng.start : 0,
         muteOriginal: $('optMuteOrig').checked
       }).then(function (r) {
         setProgress(100);
@@ -366,6 +410,7 @@
       });
     }).catch(function (e) {
       setProgress(0);
+      if (e.message !== 'Cancelled') logAdd('ERROR ' + e.message);
       setStatus(e.message === 'Cancelled' ? 'Cancelled.' : e.message, e.message === 'Cancelled' ? '' : 'err');
     }).then(function () { setBusy(false); });
   }
@@ -409,7 +454,7 @@
 
   function saveEnh() {
     try {
-      window.localStorage.setItem(STORE_KEY, JSON.stringify({ level: $('enhanceLevel').value, params: readEnhParams(), cleanup: $('cleanupLevel').value, hiss: $('hissAmt').value }));
+      window.localStorage.setItem(STORE_KEY, JSON.stringify({ level: $('enhanceLevel').value, params: readEnhParams(), cleanup: $('cleanupLevel').value, hiss: $('hissAmt').value, quality: $('qualityLevel').value }));
     } catch (e) { /* ignore */ }
   }
 
@@ -426,6 +471,7 @@
     setEnhParams(ENH_PRESETS.studio);
     try {
       var saved = JSON.parse(window.localStorage.getItem(STORE_KEY) || 'null');
+      if (saved && (saved.quality === 'fast' || saved.quality === 'best')) $('qualityLevel').value = saved.quality;
       if (saved && typeof saved.hiss !== 'undefined') { $('hissAmt').value = saved.hiss; $('hissVal').textContent = saved.hiss + '%'; }
       if (saved && saved.cleanup && ['normal', 'strong', 'max'].indexOf(saved.cleanup) >= 0) $('cleanupLevel').value = saved.cleanup;
       if (saved && saved.params) {
@@ -447,12 +493,76 @@
   });
 
   $('cleanupLevel').addEventListener('change', saveEnh);
+  $('qualityLevel').addEventListener('change', saveEnh);
   $('hissAmt').addEventListener('input', function () { $('hissVal').textContent = this.value + '%'; saveEnh(); });
   $('btnEnhReset').addEventListener('click', function () {
     $('enhanceLevel').value = 'studio';
     applyingPreset = true; setEnhParams(ENH_PRESETS.studio); applyingPreset = false;
     saveEnh();
   });
+
+  /* ---------- Preview ---------- */
+
+  var pvFiles = null;
+
+  function pvSelect(kind) {
+    if (!pvFiles || !pvFiles[kind]) return;
+    var au = $('pvAudio'), t = au.currentTime || 0, wasPlaying = !au.paused;
+    var url = 'file:///' + pvFiles[kind].replace(/\\/g, '/').replace(/^\//, '');
+    au.src = encodeURI(url).replace(/#/g, '%23') + '?t=' + Date.now();
+    au.onloadedmetadata = function () {
+      try { au.currentTime = Math.min(t, au.duration || t); } catch (e) { /* ignore */ }
+      if (wasPlaying) au.play();
+    };
+    Array.prototype.forEach.call(document.querySelectorAll('.pv'), function (b) {
+      b.className = 'btn pv' + (b.getAttribute('data-pv') === kind ? ' on' : '');
+    });
+  }
+
+  function showPreview(files) {
+    pvFiles = { input: files.input, voice: files.voice_enhanced || files.voice_clean, noise: files.noise, music: files.music };
+    $('pvBox').style.display = '';
+    $('pvAudio').pause();
+    $('pvAudio').removeAttribute('src');
+    pvSelect('voice');
+    setProgress(100);
+    setStatus('Preview ready. Switch between Original / Voice / Noise / Music below.', 'ok');
+  }
+
+  /* ---------- Diagnostics ---------- */
+
+  function copyText(t) {
+    var ta = document.createElement('textarea');
+    ta.value = t;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;user-select:text;-webkit-user-select:text';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+
+  function diagText() {
+    var host = {};
+    try { host = cs.getHostEnvironment(); } catch (e) { /* ignore */ }
+    var inst = {};
+    try { inst = VSInstaller.readInstalled() || {}; } catch (e) { /* ignore */ }
+    var lines = [
+      'Voice Isolator diagnostic',
+      'Panel: v1.0.0',
+      'Host: ' + (host.appName || '?') + ' ' + (host.appVersion || ''),
+      'OS: ' + os.platform() + ' ' + os.release() + ' ' + os.arch(),
+      'Engine pack: ' + (inst.packId || 'none') + ' ' + (inst.version || ''),
+      'Source: ' + (state.src ? path.basename(state.src) : 'none') +
+        (state.range ? '  range ' + state.range.start.toFixed(1) + '-' + state.range.end.toFixed(1) : ''),
+      'Settings: strength=' + $('strength').value + ' quality=' + $('qualityLevel').value + ' cleanup=' + $('cleanupLevel').value + ' hiss=' + $('hissAmt').value +
+        ' enhance=' + $('enhanceLevel').value + ' ' + JSON.stringify(readEnhParams()),
+      'Status: ' + $('status').textContent,
+      '--- log ---'
+    ].concat(state.log);
+    return lines.join('\n');
+  }
 
   /* ---------- license ---------- */
 
@@ -525,7 +635,16 @@
   });
   $('btnSelected').addEventListener('click', useSelected);
   $('btnBrowse').addEventListener('click', browse);
-  $('btnRun').addEventListener('click', run);
+  $('btnRun').addEventListener('click', function () { run(false); });
+  $('btnPreview').addEventListener('click', function () { run(true); });
+  Array.prototype.forEach.call(document.querySelectorAll('.pv'), function (b) {
+    b.addEventListener('click', function () { pvSelect(this.getAttribute('data-pv')); });
+  });
+  $('lnkDiag').addEventListener('click', function (e) {
+    e.preventDefault();
+    var ok = copyText(diagText());
+    setStatus(ok ? 'Diagnostic info copied. Paste it in your message to support.' : 'Could not copy automatically.', ok ? 'ok' : 'err');
+  });
   $('btnCancel').addEventListener('click', cancel);
 
   $('btnInstall').addEventListener('click', function () { startInstall(null); });

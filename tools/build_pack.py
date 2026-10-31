@@ -195,9 +195,14 @@ def build(pid, version):
     (W / "models" / "torch").mkdir(parents=True)
     (W / "models" / "hf").mkdir(parents=True)
     run([py, "-c", "from demucs.pretrained import get_model; get_model('htdemucs')"], env=env)
+    # "Best" quality: htdemucs_ft (4 fine-tuned models). Panel mein Quality > Best isi se chalta he.
+    run([py, "-c", "from demucs.pretrained import get_model; get_model('htdemucs_ft')"], env=env)
     run([py, "-c", "import shutil,sys; from df.enhance import maybe_download_model;"
          "p=maybe_download_model('DeepFilterNet3');"
          "shutil.copytree(p, sys.argv[1], dirs_exist_ok=True)", W / "models" / "DeepFilterNet3"], env=env)
+    ckpts = list((W / "models" / "torch" / "hub" / "checkpoints").glob("*.th"))
+    if len(ckpts) < 5:
+        sys.exit(f"Demucs models incomplete: {len(ckpts)} checkpoint files (expected htdemucs + 4 htdemucs_ft)")
     total = sum(f.stat().st_size for f in (W / "models").rglob("*") if f.is_file())
     if total < 100 * 1024 * 1024:
         sys.exit("Models theek se download nahi hue (size bohat chhota).")
@@ -219,10 +224,12 @@ def build(pid, version):
     test_env = dict(os.environ)
     test_env["PATH"] = (os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
                         if is_win else "/usr/bin:/bin")
-    run([py, ENGINE, test_wav, "-o", out, "--ffmpeg", ff, "--runtime", W, "--enhance", "studio"], env=test_env)
+    run([py, ENGINE, test_wav, "-o", out, "--ffmpeg", ff, "--runtime", W, "--enhance", "studio", "--quality", "best"], env=test_env)
     for n in ("test_voice_clean.wav", "test_music.wav", "test_voice_original.wav"):
         if not (out / n).exists():
             sys.exit("Test fail: " + n + " nahi bani")
+    if not (out / "test_noise.wav").exists():
+        print("WARNING: noise layer file was not created (optional)", flush=True)
     if not (out / "test_voice_enhanced.wav").exists():
         # Voice enhance (FFmpeg filters). Windows par zaroori, Mac par sirf warning.
         msg = "Voice enhance output nahi bana (FFmpeg filters check karein)"
