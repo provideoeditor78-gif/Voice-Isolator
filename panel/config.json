@@ -1,7 +1,7 @@
 {
-  "baseUrl": "https://YOUR-HOST/voiceisolator/v1/",
-  "licenseApi": "https://YOUR-SITE/wp-json/voice-isolator/v1/",
-  "buyUrl": "https://YOUR-SITE/",
+  "baseUrl": "https://asadfx.store/voiceisolator/v1/",
+  "licenseApi": "https://asadfx.store/wp-json/voice-isolator/v1/",
+  "buyUrl": "https://asadfx.store/",
   "productCode": "voiceisolator",
   "licenseRequired": true,
   "devPython": "",
