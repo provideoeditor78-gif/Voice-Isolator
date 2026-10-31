@@ -1,5 +1,5 @@
 {
-  "baseUrl": "https://asadfx.store/voiceisolator/v1/",
+  "baseUrl": "https://YOUR-HOST/voiceisolator/v1/",
   "licenseApi": "https://asadfx.store/wp-json/voice-isolator/v1/",
   "buyUrl": "https://asadfx.store/",
   "productCode": "voiceisolator",

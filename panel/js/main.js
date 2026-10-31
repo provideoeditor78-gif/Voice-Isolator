@@ -186,7 +186,7 @@
     showView('main');
     refreshLicenseInfo();
     var inst = VSInstaller.readInstalled() || {};
-    $('rtInfo').textContent = 'Engine: ' + (inst.packId || 'dev') + (inst.version ? ' v' + inst.version : '');
+    $('rtInfo').textContent = 'Panel v1.3.0  \u2022  Engine: ' + (inst.packId || 'dev') + (inst.version ? ' v' + inst.version : '');
     $('btnUpdate').style.display = 'none';
 
     if (inst.packId && inst.version) {
@@ -237,20 +237,23 @@
     convert: 'Reading audio\u2026',
     separate: 'Separating voice and music\u2026',
     denoise: 'Removing noise\u2026',
+    noise: 'Extracting noise layer\u2026',
+    enhance: 'Polishing voice\u2026',
     export: 'Saving files\u2026'
   };
 
-  function runEngine(src, outDir, strength, onProgress) {
+  function runEngine(src, outDir, strength, enhance, enhParams, onProgress) {
     return new Promise(function (resolve, reject) {
       var eng = resolveEngine();
       var args = eng.args.concat([src, '-o', outDir, '--strength', String(strength),
+        '--enhance', enhance, '--enhance-params', JSON.stringify(enhParams || {}),
         '--ffmpeg', eng.ffmpeg, '--runtime', eng.runtime]);
       var child;
       try { child = spawn(eng.cmd, args, { windowsHide: true }); }
       catch (e) { return reject(new Error('Could not start engine: ' + e.message)); }
 
       state.proc = child;
-      var buf = '', errTail = '', result = null, engineError = null;
+      var buf = '', errTail = '', result = null, engineError = null, warnings = [];
 
       child.on('error', function (e) {
         reject(new Error('Could not start engine (' + eng.cmd + '): ' + e.message));
@@ -267,6 +270,7 @@
           try { m = JSON.parse(line); } catch (e) { return; }
           if (m.stage === 'error') engineError = m.message;
           else if (m.stage === 'done') result = m.files;
+          else if (m.stage === 'warn') warnings.push(m.message);
           else onProgress(m);
         });
       });
@@ -276,7 +280,7 @@
       child.on('close', function (code) {
         state.proc = null;
         if (state.cancelled) return reject(new Error('Cancelled'));
-        if (result) return resolve(result);
+        if (result) { result.__warnings = warnings; return resolve(result); }
         reject(new Error(engineError || errTail || ('Engine exited with code ' + code)));
       });
     });
@@ -320,23 +324,44 @@
     setProgress(2);
     setStatus('Starting\u2026');
 
-    runEngine(state.src, outDir, strength, function (m) {
+    var enhance = $('enhanceLevel').value;
+    runEngine(state.src, outDir, strength, enhance, readEnhParams(), function (m) {
       setProgress(m.percent);
       setStatus(STAGE_LABEL[m.stage] || m.stage);
     }).then(function (files) {
-      var list = [];
-      if ($('optClean').checked) list.push(files.voice_clean);
-      if ($('optOrig').checked) list.push(files.voice_original);
-      if ($('optMusic').checked) list.push(files.music);
-      if (!list.length) {
+      var note = (files.__warnings && files.__warnings.length) ? ' Note: ' + files.__warnings.join(' ') : '';
+
+      // Kaun si voice "main" hai (original naam wali): enhanced > clean > original
+      var voices = [];
+      if ($('optEnh').checked && files.voice_enhanced) voices.push({ path: files.voice_enhanced, suffix: '' });
+      if ($('optClean').checked) voices.push({ path: files.voice_clean, suffix: ' (clean)' });
+      if ($('optOrig').checked) voices.push({ path: files.voice_original, suffix: ' (original)' });
+      var items = [];
+      voices.forEach(function (v, i) {
+        items.push({ path: v.path, kind: 'voice', name: name + (i === 0 ? '' : v.suffix) });
+      });
+      if ($('optMusic').checked && files.music) items.push({ path: files.music, kind: 'music', name: 'Music' });
+      if ($('optNoise').checked && files.noise) items.push({ path: files.noise, kind: 'noise', name: 'Noise' });
+
+      if (!items.length) {
         setProgress(100);
-        setStatus('Done. Files saved in: ' + outDir, 'ok');
+        setStatus('Done. Files saved in: ' + outDir + note, 'ok');
         return;
       }
       setStatus('Importing into project\u2026');
-      return callHost('importFiles', { files: list, bin: 'Voice Isolator' }).then(function () {
+      return callHost('importAndPlace', {
+        items: items,
+        bin: 'Voice Isolator',
+        src: state.src,
+        timeline: $('optTimeline').checked,
+        muteOriginal: $('optMuteOrig').checked
+      }).then(function (r) {
         setProgress(100);
-        setStatus('Done. Imported ' + list.length + ' file(s). Saved in: ' + outDir, 'ok');
+        var msg = 'Done. Imported ' + items.length + ' file(s)';
+        if ($('optTimeline').checked) msg += (r.placed ? ', ' + r.placed + ' added to timeline' : ', none added to timeline');
+        msg += '. Saved in: ' + outDir + note;
+        if (r.note) msg += ' ' + r.note;
+        setStatus(msg, 'ok');
       });
     }).catch(function (e) {
       setProgress(0);
@@ -350,6 +375,79 @@
     try { state.proc.kill(); } catch (e) { /* ignore */ }
   }
 
+
+  /* ---------- Voice enhance controls ---------- */
+
+  var ENH_PRESETS = {
+    studio:  { lowcut: 80, mud: 2, presence: 2.5, air: 1.5, deess: 40, comp: 40, lufs: -16 },
+    natural: { lowcut: 70, mud: 0, presence: 0,   air: 0,   deess: 0,  comp: 20, lufs: -16 }
+  };
+  var ENH_KEYS = ['lowcut', 'mud', 'presence', 'air', 'deess', 'comp', 'lufs'];
+  var ENH_UNIT = { lowcut: ' Hz', mud: ' dB', presence: ' dB', air: ' dB', deess: '%', comp: '%', lufs: ' LUFS' };
+  var STORE_KEY = 'voiceIsolator.enhance.v1';
+  var applyingPreset = false;
+
+  function fmtEnh(k, v) {
+    v = parseFloat(v);
+    if (v === 0 && k !== 'lufs') return 'off';
+    return ((k === 'mud' || k === 'presence' || k === 'air') ? v.toFixed(1) : String(v)) + ENH_UNIT[k];
+  }
+
+  function readEnhParams() {
+    var o = {};
+    ENH_KEYS.forEach(function (k) { o[k] = parseFloat($('p_' + k).value); });
+    return o;
+  }
+
+  function setEnhParams(p) {
+    ENH_KEYS.forEach(function (k) {
+      $('p_' + k).value = p[k];
+      $('v_' + k).textContent = fmtEnh(k, p[k]);
+    });
+  }
+
+  function saveEnh() {
+    try {
+      window.localStorage.setItem(STORE_KEY, JSON.stringify({ level: $('enhanceLevel').value, params: readEnhParams() }));
+    } catch (e) { /* ignore */ }
+  }
+
+  function syncEnhOptions() {
+    var off = ($('enhanceLevel').value === 'off');
+    $('optEnh').disabled = off;
+    $('advBox').style.opacity = off ? '.45' : '1';
+    $('advBox').style.pointerEvents = off ? 'none' : '';
+    if (off) { $('optEnh').checked = false; $('optClean').checked = true; }
+    else { $('optEnh').checked = true; $('optClean').checked = false; }
+  }
+
+  function loadEnh() {
+    setEnhParams(ENH_PRESETS.studio);
+    try {
+      var saved = JSON.parse(window.localStorage.getItem(STORE_KEY) || 'null');
+      if (saved && saved.params) {
+        if (['studio', 'natural', 'custom', 'off'].indexOf(saved.level) >= 0) $('enhanceLevel').value = saved.level;
+        var p = {};
+        ENH_KEYS.forEach(function (k) { p[k] = (typeof saved.params[k] === 'number') ? saved.params[k] : ENH_PRESETS.studio[k]; });
+        setEnhParams(p);
+      }
+    } catch (e) { /* ignore */ }
+    syncEnhOptions();
+  }
+
+  ENH_KEYS.forEach(function (k) {
+    $('p_' + k).addEventListener('input', function () {
+      $('v_' + k).textContent = fmtEnh(k, this.value);
+      if (!applyingPreset && $('enhanceLevel').value !== 'custom') $('enhanceLevel').value = 'custom';
+      saveEnh();
+    });
+  });
+
+  $('btnEnhReset').addEventListener('click', function () {
+    $('enhanceLevel').value = 'studio';
+    applyingPreset = true; setEnhParams(ENH_PRESETS.studio); applyingPreset = false;
+    saveEnh();
+  });
 
   /* ---------- license ---------- */
 
@@ -414,6 +512,12 @@
   /* ---------- Wire up ---------- */
 
   $('strength').addEventListener('input', function () { $('strengthVal').textContent = this.value + '%'; });
+  $('enhanceLevel').addEventListener('change', function () {
+    var v = this.value;
+    if (ENH_PRESETS[v]) { applyingPreset = true; setEnhParams(ENH_PRESETS[v]); applyingPreset = false; }
+    syncEnhOptions();
+    saveEnh();
+  });
   $('btnSelected').addEventListener('click', useSelected);
   $('btnBrowse').addEventListener('click', browse);
   $('btnRun').addEventListener('click', run);
@@ -448,5 +552,6 @@
 
   window.addEventListener('unload', function () { cancel(); cancelInstall(); });
 
+  loadEnh();
   boot();
 })();

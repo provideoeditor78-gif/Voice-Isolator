@@ -76,3 +76,11 @@ h2 {
 }
 .inp:focus { outline: none; border-color: #2d7ff9; }
 #licInfo { display: block; margin-top: 4px; }
+
+/* ---- voice enhance fine-tune ---- */
+.adv { margin-top: 10px; border: 1px solid #3a3a3a; border-radius: 4px; padding: 6px 10px 10px; background: #1e1e1e; }
+.adv summary { cursor: pointer; color: #9fc4ff; padding: 4px 0; outline: none; }
+.ctl { margin-top: 10px; }
+.ctl label { display: flex; justify-content: space-between; color: #c4c4c4; margin-bottom: 2px; }
+.ctl label span { color: #8f8f8f; }
+.ctl input[type=range] { width: 100%; margin: 0; }

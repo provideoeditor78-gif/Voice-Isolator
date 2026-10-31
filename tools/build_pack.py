@@ -30,6 +30,26 @@ TORCH = ["torch==2.1.2", "torchaudio==2.1.2"]
 UA = {"User-Agent": "Mozilla/5.0 VoiceIsolatorBuild"}
 
 
+SPHN_STUB = '''"""Stand-in for "sphn" (no Intel-Mac wheel exists). Reads audio with soundfile.
+
+Demucs only calls sphn.read(path) -> (float32 array [channels, time], sample_rate).
+Our engine always feeds it a plain WAV, which soundfile reads natively, so neither
+ffmpeg nor ffprobe is needed at this point.
+"""
+import numpy as np
+
+
+def read(path, *args, **kwargs):
+    import soundfile as sf
+    data, sr = sf.read(str(path), dtype="float32", always_2d=True)
+    return np.ascontiguousarray(data.T), sr
+
+
+def write(*args, **kwargs):
+    raise RuntimeError("sphn.write is not available in this build")
+'''
+
+
 def run(cmd, env=None):
     cmd = [str(c) for c in cmd]
     print("+ " + " ".join(cmd), flush=True)
@@ -146,8 +166,8 @@ def build(pid, version):
         pip(py, *TORCH)
     if pid == "mac-x64":
         # Intel Mac: Demucs ki library "sphn" ka Intel wheel maujood nahi (compile fail hota tha).
-        # Demucs sphn sirf audio padhne ke liye try karta hai aur ffmpeg par fallback karta hai,
-        # isliye demucs ko bina sphn install karke ek chhota stub rakh dete hain.
+        # Demucs sphn sirf audio padhne ke liye use karta hai. Uski jagah soundfile se padhne wala
+        # chhota stand-in rakhte hain (ffmpeg fallback ko ffprobe bhi chahiye, jo hamare paas nahi).
         pip(py, "demucs", "--no-deps")
         pip(py, "einops", "huggingface-hub", "julius", "lameenc", "pyyaml", "safetensors", "tqdm")
         pip(py, "deepfilternet", "soundfile", "imageio-ffmpeg", "numpy<2")
@@ -155,10 +175,7 @@ def build(pid, version):
                                        text=True).strip()
         stub = Path(site) / "sphn"
         stub.mkdir(exist_ok=True)
-        (stub / "__init__.py").write_text(
-            '"""Stub: sphn is not available on Intel Mac. Demucs falls back to ffmpeg."""\n'
-            'def read(*a, **k):\n    raise RuntimeError("sphn not available")\n'
-            'def write(*a, **k):\n    raise RuntimeError("sphn not available")\n')
+        (stub / "__init__.py").write_text(SPHN_STUB)
     else:
         pip(py, "demucs", "deepfilternet", "soundfile", "imageio-ffmpeg", "numpy<2")
 
@@ -197,10 +214,21 @@ def build(pid, version):
     test_wav = WORK / "test.wav"
     run([ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", test_wav])
     out = WORK / f"testout_{pid}"
-    run([py, ENGINE, test_wav, "-o", out, "--ffmpeg", ff, "--runtime", W])
+    # Customer ke PC jaisa mahaul: PATH mein sirf system folders (git, python wagaira nahi).
+    # Pehle sirf apne git-wale machine par test hota tha, isliye "git nahi hai" wala crash nahi pakra gaya.
+    test_env = dict(os.environ)
+    test_env["PATH"] = (os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
+                        if is_win else "/usr/bin:/bin")
+    run([py, ENGINE, test_wav, "-o", out, "--ffmpeg", ff, "--runtime", W, "--enhance", "studio"], env=test_env)
     for n in ("test_voice_clean.wav", "test_music.wav", "test_voice_original.wav"):
         if not (out / n).exists():
             sys.exit("Test fail: " + n + " nahi bani")
+    if not (out / "test_voice_enhanced.wav").exists():
+        # Voice enhance (FFmpeg filters). Windows par zaroori, Mac par sirf warning.
+        msg = "Voice enhance output nahi bana (FFmpeg filters check karein)"
+        if is_win:
+            sys.exit("Test fail: " + msg)
+        print("WARNING:", msg, flush=True)
 
     print("== [6/6] Pack", flush=True)
     if is_win:

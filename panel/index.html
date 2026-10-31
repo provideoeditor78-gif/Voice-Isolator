@@ -68,10 +68,50 @@
     </section>
 
     <section>
+      <h2>Voice enhance</h2>
+      <select id="enhanceLevel" class="sel">
+        <option value="studio" selected>Studio (full polish)</option>
+        <option value="natural">Natural (light polish)</option>
+        <option value="custom">Custom (my settings)</option>
+        <option value="off">Off</option>
+      </select>
+      <p class="hint">Final step after noise removal: cleaner low end, clearer presence, smoother "s" sounds, even volume and a standard loudness.</p>
+
+      <details id="advBox" class="adv">
+        <summary>Fine-tune voice</summary>
+        <div class="ctl"><label>Low cut (rumble)<span id="v_lowcut">80 Hz</span></label>
+          <input type="range" id="p_lowcut" min="0" max="200" step="5" value="80"></div>
+        <div class="ctl"><label>Reduce boxiness (250 Hz)<span id="v_mud">2.0 dB</span></label>
+          <input type="range" id="p_mud" min="0" max="8" step="0.5" value="2"></div>
+        <div class="ctl"><label>Presence / clarity (3 kHz)<span id="v_presence">2.5 dB</span></label>
+          <input type="range" id="p_presence" min="0" max="6" step="0.5" value="2.5"></div>
+        <div class="ctl"><label>Air / brightness (9.5 kHz)<span id="v_air">1.5 dB</span></label>
+          <input type="range" id="p_air" min="0" max="6" step="0.5" value="1.5"></div>
+        <div class="ctl"><label>De-esser (soften "s")<span id="v_deess">40%</span></label>
+          <input type="range" id="p_deess" min="0" max="100" step="5" value="40"></div>
+        <div class="ctl"><label>Compression (even volume)<span id="v_comp">40%</span></label>
+          <input type="range" id="p_comp" min="0" max="100" step="5" value="40"></div>
+        <div class="ctl"><label>Loudness target<span id="v_lufs">-16 LUFS</span></label>
+          <input type="range" id="p_lufs" min="-24" max="-10" step="1" value="-16"></div>
+        <p class="hint">0 = that effect is off. Moving any slider switches to "Custom". -16 LUFS is standard for YouTube / podcasts.</p>
+        <button id="btnEnhReset" class="btn ghost" style="margin-top:8px">Reset to Studio</button>
+      </details>
+    </section>
+
+    <section>
       <h2>3. Import into project</h2>
-      <label class="chk"><input type="checkbox" id="optClean" checked> Clean voice</label>
+      <label class="chk"><input type="checkbox" id="optEnh" checked> Enhanced voice</label>
+      <label class="chk"><input type="checkbox" id="optClean"> Clean voice (noise removed only)</label>
       <label class="chk"><input type="checkbox" id="optOrig"> Original voice (no denoise)</label>
       <label class="chk"><input type="checkbox" id="optMusic" checked> Music / background</label>
+      <label class="chk"><input type="checkbox" id="optNoise" checked> Noise (what was removed)</label>
+    </section>
+
+    <section>
+      <h2>4. Timeline</h2>
+      <label class="chk"><input type="checkbox" id="optTimeline" checked> Add layers to the timeline automatically</label>
+      <label class="chk"><input type="checkbox" id="optMuteOrig"> Mute the original clip</label>
+      <p class="hint">Layers are named with the original file name (voice), "Music" and "Noise", placed in sync with the selected clip. The Noise layer is added muted.</p>
     </section>
 
     <section>
