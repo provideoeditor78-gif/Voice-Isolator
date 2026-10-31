@@ -26,6 +26,27 @@ HERE = Path(__file__).resolve().parent
 MODELS = HERE.parent / "models"          # --runtime se badal jata hai
 
 
+def _patch_git_calls():
+    """DeepFilterNet logging ke liye `git` chalata hai. Customer ke PC par git nahi hota,
+    to FileNotFoundError aata hai aur process crash ho jata tha. Ab git na mile to
+    CalledProcessError uthate hain, jise df khud sambhal leta hai (commit = na)."""
+    real = subprocess.check_output
+
+    def safe(cmd, *a, **k):
+        try:
+            return real(cmd, *a, **k)
+        except FileNotFoundError:
+            first = cmd[0] if isinstance(cmd, (list, tuple)) and cmd else cmd
+            if str(first).lower().replace(".exe", "") == "git":
+                raise subprocess.CalledProcessError(127, cmd)
+            raise
+
+    subprocess.check_output = safe
+
+
+_patch_git_calls()   # df import hone se pehle
+
+
 def setup_offline_env():
     """Downloaded runtime ke models mil jaayein to har library ko wahi dikhao, internet band."""
     if (MODELS / "hf").exists() or (MODELS / "torch").exists():
