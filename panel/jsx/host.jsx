@@ -46,7 +46,7 @@ function vsErr(msg) {
 // ---------------------------------------------------------------
 function getSelectedMedia() {
     try {
-        var p = null, rs = null, re = null;   // rs/re = source file ke andar clip ka start/end (seconds)
+        var p = null;
 
         if (vsIsAE()) {
             var i, sel = app.project.selection;
@@ -56,20 +56,8 @@ function getSelectedMedia() {
             if (!p && app.project.activeItem instanceof CompItem) {
                 var layers = app.project.activeItem.selectedLayers;
                 for (i = 0; i < layers.length; i++) {
-                    var lay = layers[i], src = lay.source;
-                    if (src instanceof FootageItem && src.file) {
-                        p = src.file.fsName;
-                        try {
-                            if (!lay.timeRemapEnabled && lay.stretch > 0) {
-                                rs = (lay.inPoint - lay.startTime) * 100 / lay.stretch;
-                                re = (lay.outPoint - lay.startTime) * 100 / lay.stretch;
-                                if (rs < 0) rs = 0;
-                                if (src.duration && re > src.duration) re = src.duration;
-                                if (!(re > rs)) { rs = null; re = null; }
-                            }
-                        } catch (eR) { rs = null; re = null; }
-                        break;
-                    }
+                    var src = layers[i].source;
+                    if (src instanceof FootageItem && src.file) { p = src.file.fsName; break; }
                 }
             }
         } else {
@@ -82,14 +70,7 @@ function getSelectedMedia() {
                     for (j = 0; j < tsel.length; j++) {
                         if (tsel[j].projectItem) {
                             var mp = tsel[j].projectItem.getMediaPath();
-                            if (mp) {
-                                p = mp;
-                                try {
-                                    rs = tsel[j].inPoint.seconds; re = tsel[j].outPoint.seconds;
-                                    if (!(re > rs)) { rs = null; re = null; }
-                                } catch (eP) { rs = null; re = null; }
-                                break;
-                            }
+                            if (mp) { p = mp; break; }
                         }
                     }
                 }
@@ -111,7 +92,7 @@ function getSelectedMedia() {
         }
 
         if (!p) return vsErr("Select a clip (timeline or project panel) first.");
-        return vsOk({ path: p, rangeStart: rs, rangeEnd: re });
+        return vsOk({ path: p });
     } catch (e) {
         return vsErr(e.toString());
     }
@@ -162,8 +143,7 @@ function importFiles(opts) {
 
 // ===============================================================
 // importAndPlace: files import karo (naam ke saath) + timeline mein layers/clips daalo
-//   opts = { items:[{path, kind:"voice"|"music"|"noise", name}], bin, src, timeline, muteOriginal, srcOffset }
-//   srcOffset = source file ke kitne second se processing shuru hui (0 = poori file)
+//   opts = { items:[{path, kind:"voice"|"music"|"noise", name}], bin, src, timeline, muteOriginal }
 // Naam: voice = original file ka naam, "Music", "Noise". Noise muted add hoti hai.
 // ===============================================================
 function vsNormPath(p) {
@@ -227,7 +207,7 @@ function vsAEImportAndPlace(opts) {
             lay.name = items[i].name;
             if (anchor) {
                 try {
-                    lay.startTime = anchor.startTime + (opts.srcOffset || 0);
+                    lay.startTime = anchor.startTime;
                     lay.inPoint = anchor.inPoint;
                     lay.outPoint = anchor.outPoint;
                 } catch (eT) {}
@@ -319,7 +299,7 @@ function vsPPROImportAndPlace(opts) {
     var startSec, endSec, offsetSec;
     if (anchor) {
         startSec = anchor.start.seconds; endSec = anchor.end.seconds;
-        offsetSec = startSec - anchor.inPoint.seconds + (opts.srcOffset || 0);   // process hue hisse ka 0:00 timeline par yahan aata hai
+        offsetSec = startSec - anchor.inPoint.seconds;      // file ka 0:00 timeline par yahan aata hai
     } else {
         startSec = seq.getPlayerPosition().seconds; endSec = startSec + 1; offsetSec = startSec;
         note = "Original clip not selected in the timeline, so clips were placed at the playhead.";

@@ -84,8 +84,3 @@ h2 {
 .ctl label { display: flex; justify-content: space-between; color: #c4c4c4; margin-bottom: 2px; }
 .ctl label span { color: #8f8f8f; }
 .ctl input[type=range] { width: 100%; margin: 0; }
-
-/* ---- preview ---- */
-.pvrow { margin-top: 8px; }
-.pvrow .btn { padding: 6px 4px; }
-.btn.pv.on { background: #2d7ff9; border-color: #2d7ff9; color: #fff; }

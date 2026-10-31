@@ -56,16 +56,6 @@
         <button id="btnSelected" class="btn">Use selected clip</button>
         <button id="btnBrowse" class="btn ghost">Browse…</button>
       </div>
-      <label class="chk" id="rangeRow" style="display:none"><input type="checkbox" id="optRange" checked> <span id="rangeText">Process only the selected part</span></label>
-    </section>
-
-    <section>
-      <h2>Quality</h2>
-      <select id="qualityLevel" class="sel">
-        <option value="fast" selected>Fast (recommended)</option>
-        <option value="best">Best (cleaner voice/music split, 3-4x slower)</option>
-      </select>
-      <p class="hint">Best separates the voice from music more cleanly. Try it when music or other sounds leak into the voice. Use Preview first to hear the difference.</p>
     </section>
 
     <section>
@@ -136,23 +126,10 @@
     </section>
 
     <section>
-      <button id="btnPreview" class="btn" style="margin-bottom:8px" disabled>Preview 15 s sample</button>
       <button id="btnRun" class="btn primary" disabled>Process</button>
       <button id="btnCancel" class="btn danger" style="display:none">Cancel</button>
       <div class="bar"><div id="barFill"></div></div>
       <div id="status" class="status">Ready.</div>
-    </section>
-
-    <section id="pvBox" style="display:none">
-      <h2>Preview (15 s sample)</h2>
-      <audio id="pvAudio" controls style="width:100%"></audio>
-      <div class="row pvrow">
-        <button class="btn pv" data-pv="input">Original</button>
-        <button class="btn pv" data-pv="voice">Voice</button>
-        <button class="btn pv" data-pv="noise">Noise</button>
-        <button class="btn pv" data-pv="music">Music</button>
-      </div>
-      <p class="hint">Voice is louder because of loudness normalization. Compare the tone and the leftover noise, not the volume. Not happy? Change a setting and press Preview again.</p>
     </section>
 
     <section class="foot">
@@ -160,7 +137,6 @@
       <span id="licInfo"></span>
       <a id="btnUpdate" class="link" href="#" style="display:none">Update available</a>
       <a id="lnkReinstall" class="link" href="#">Reinstall / change</a>
-      <a id="lnkDiag" class="link" href="#">Copy diagnostic info</a>
       <a id="lnkDeactivate" class="link" href="#" style="display:none">Deactivate this computer</a>
     </section>
   </div>
