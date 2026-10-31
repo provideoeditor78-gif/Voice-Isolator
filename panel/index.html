@@ -65,6 +65,15 @@
         <span id="strengthVal">100%</span>
       </div>
       <p class="hint">100% = remove all noise. Lower it if the voice sounds robotic.</p>
+      <div class="ctl"><label>Extra hiss / noise reduction<span id="hissVal">50%</span></label>
+        <input type="range" id="hissAmt" min="0" max="100" step="5" value="50"></div>
+      <select id="cleanupLevel" class="sel">
+        <option value="normal">Cleanup: Normal</option>
+        <option value="strong" selected>Cleanup: Strong (removes leftover hiss)</option>
+        <option value="max">Cleanup: Maximum (2 passes, slower)</option>
+      </select>
+      <p class="hint">If a little noise is still left, use Strong or Maximum. Maximum can make the voice sound slightly processed.</p>
+      <p class="hint">Extra hiss reduction runs after the AI denoise. Raise it if noise remains; lower it if the voice sounds watery or underwater.</p>
     </section>
 
     <section>
@@ -81,6 +90,8 @@
         <summary>Fine-tune voice</summary>
         <div class="ctl"><label>Low cut (rumble)<span id="v_lowcut">80 Hz</span></label>
           <input type="range" id="p_lowcut" min="0" max="200" step="5" value="80"></div>
+        <div class="ctl"><label>Noise gate (quiet hiss between words)<span id="v_gate">30%</span></label>
+          <input type="range" id="p_gate" min="0" max="100" step="5" value="30"></div>
         <div class="ctl"><label>Reduce boxiness (250 Hz)<span id="v_mud">2.0 dB</span></label>
           <input type="range" id="p_mud" min="0" max="8" step="0.5" value="2"></div>
         <div class="ctl"><label>Presence / clarity (3 kHz)<span id="v_presence">2.5 dB</span></label>

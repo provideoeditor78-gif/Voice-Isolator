@@ -186,7 +186,7 @@
     showView('main');
     refreshLicenseInfo();
     var inst = VSInstaller.readInstalled() || {};
-    $('rtInfo').textContent = 'Panel v1.3.0  \u2022  Engine: ' + (inst.packId || 'dev') + (inst.version ? ' v' + inst.version : '');
+    $('rtInfo').textContent = 'Panel v1.0.0  \u2022  Engine: ' + (inst.packId || 'dev') + (inst.version ? ' v' + inst.version : '');
     $('btnUpdate').style.display = 'none';
 
     if (inst.packId && inst.version) {
@@ -237,16 +237,17 @@
     convert: 'Reading audio\u2026',
     separate: 'Separating voice and music\u2026',
     denoise: 'Removing noise\u2026',
+    hiss: 'Removing leftover hiss\u2026',
     noise: 'Extracting noise layer\u2026',
     enhance: 'Polishing voice\u2026',
     export: 'Saving files\u2026'
   };
 
-  function runEngine(src, outDir, strength, enhance, enhParams, onProgress) {
+  function runEngine(src, outDir, strength, enhance, enhParams, cleanup, hiss, onProgress) {
     return new Promise(function (resolve, reject) {
       var eng = resolveEngine();
       var args = eng.args.concat([src, '-o', outDir, '--strength', String(strength),
-        '--enhance', enhance, '--enhance-params', JSON.stringify(enhParams || {}),
+        '--enhance', enhance, '--cleanup', cleanup, '--hiss', String(hiss), '--enhance-params', JSON.stringify(enhParams || {}),
         '--ffmpeg', eng.ffmpeg, '--runtime', eng.runtime]);
       var child;
       try { child = spawn(eng.cmd, args, { windowsHide: true }); }
@@ -325,7 +326,7 @@
     setStatus('Starting\u2026');
 
     var enhance = $('enhanceLevel').value;
-    runEngine(state.src, outDir, strength, enhance, readEnhParams(), function (m) {
+    runEngine(state.src, outDir, strength, enhance, readEnhParams(), $('cleanupLevel').value, parseInt($('hissAmt').value, 10), function (m) {
       setProgress(m.percent);
       setStatus(STAGE_LABEL[m.stage] || m.stage);
     }).then(function (files) {
@@ -379,11 +380,11 @@
   /* ---------- Voice enhance controls ---------- */
 
   var ENH_PRESETS = {
-    studio:  { lowcut: 80, mud: 2, presence: 2.5, air: 1.5, deess: 40, comp: 40, lufs: -16 },
-    natural: { lowcut: 70, mud: 0, presence: 0,   air: 0,   deess: 0,  comp: 20, lufs: -16 }
+    studio:  { lowcut: 80, mud: 2, presence: 2.5, air: 1.5, deess: 40, comp: 40, gate: 30, lufs: -16 },
+    natural: { lowcut: 70, mud: 0, presence: 0,   air: 0,   deess: 0,  comp: 20, gate: 0,  lufs: -16 }
   };
-  var ENH_KEYS = ['lowcut', 'mud', 'presence', 'air', 'deess', 'comp', 'lufs'];
-  var ENH_UNIT = { lowcut: ' Hz', mud: ' dB', presence: ' dB', air: ' dB', deess: '%', comp: '%', lufs: ' LUFS' };
+  var ENH_KEYS = ['lowcut', 'mud', 'presence', 'air', 'deess', 'comp', 'gate', 'lufs'];
+  var ENH_UNIT = { lowcut: ' Hz', mud: ' dB', presence: ' dB', air: ' dB', deess: '%', comp: '%', gate: '%', lufs: ' LUFS' };
   var STORE_KEY = 'voiceIsolator.enhance.v1';
   var applyingPreset = false;
 
@@ -408,7 +409,7 @@
 
   function saveEnh() {
     try {
-      window.localStorage.setItem(STORE_KEY, JSON.stringify({ level: $('enhanceLevel').value, params: readEnhParams() }));
+      window.localStorage.setItem(STORE_KEY, JSON.stringify({ level: $('enhanceLevel').value, params: readEnhParams(), cleanup: $('cleanupLevel').value, hiss: $('hissAmt').value }));
     } catch (e) { /* ignore */ }
   }
 
@@ -425,6 +426,8 @@
     setEnhParams(ENH_PRESETS.studio);
     try {
       var saved = JSON.parse(window.localStorage.getItem(STORE_KEY) || 'null');
+      if (saved && typeof saved.hiss !== 'undefined') { $('hissAmt').value = saved.hiss; $('hissVal').textContent = saved.hiss + '%'; }
+      if (saved && saved.cleanup && ['normal', 'strong', 'max'].indexOf(saved.cleanup) >= 0) $('cleanupLevel').value = saved.cleanup;
       if (saved && saved.params) {
         if (['studio', 'natural', 'custom', 'off'].indexOf(saved.level) >= 0) $('enhanceLevel').value = saved.level;
         var p = {};
@@ -443,6 +446,8 @@
     });
   });
 
+  $('cleanupLevel').addEventListener('change', saveEnh);
+  $('hissAmt').addEventListener('input', function () { $('hissVal').textContent = this.value + '%'; saveEnh(); });
   $('btnEnhReset').addEventListener('click', function () {
     $('enhanceLevel').value = 'studio';
     applyingPreset = true; setEnhParams(ENH_PRESETS.studio); applyingPreset = false;

@@ -113,23 +113,40 @@ def separate(wav, workdir, device):
     return folder / "vocals.wav", folder / "no_vocals.wav"
 
 
-def denoise(vocals_path, out_path, strength):
-    """DeepFilterNet se voice saaf karo. strength: 0..100."""
+def denoise(vocals_path, out_path, strength, cleanup="normal"):
+    """DeepFilterNet se voice saaf karo. strength: 0..100.
+    cleanup: normal = ek pass | strong = + post-filter (bachi hui hiss kam) | max = + dusra pass."""
     import soundfile as sf
     from df.enhance import enhance, init_df, load_audio
 
+    pf = cleanup in ("strong", "max")
     bundled = MODELS / "DeepFilterNet3"
     if bundled.is_dir():
-        model, df_state, _ = init_df(model_base_dir=str(bundled), log_file=None)
+        model, df_state, _ = init_df(model_base_dir=str(bundled), post_filter=pf, log_file=None)
     else:
-        model, df_state, _ = init_df()
+        model, df_state, _ = init_df(post_filter=pf, log_file=None)
     audio, _ = load_audio(str(vocals_path), sr=df_state.sr())
 
     # 100 = poora noise hatao. Kam strength = thoda noise rehne do (natural lagti hai)
     atten = None if strength >= 100 else 3 + (strength / 100.0) * 37  # 3..40 dB
     clean = enhance(model, df_state, audio, atten_lim_db=atten)
+    if cleanup == "max":
+        clean = enhance(model, df_state, clean, atten_lim_db=atten)
 
     sf.write(str(out_path), clean.detach().cpu().numpy().T, df_state.sr())
+
+
+def extra_denoise(path, amount, ffmpeg, workdir):
+    """DeepFilterNet ke baad bachi hui hiss/noise par FFmpeg afftdn (noise ko khud track karta he).
+    amount 0..100  ->  noise reduction 6..30 dB.  0 = off."""
+    if amount <= 0:
+        return
+    nr = 6.0 + 0.24 * float(amount)
+    tmp = Path(workdir) / "hiss_tmp.wav"
+    _ffmpeg_run([ffmpeg, "-hide_banner", "-nostats", "-y", "-i", str(path),
+                 "-af", f"afftdn=nr={nr:.1f}:nf=-50:tn=1:nt=w",
+                 "-c:a", "pcm_s24le", str(tmp)])
+    shutil.move(str(tmp), str(path))
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +158,7 @@ def denoise(vocals_path, out_path, strength):
 #   air       dB   0..6     9.5 kHz par chamak (0 = off)
 #   deess     0..100        "s" sounds narm (0 = off)
 #   comp      0..100        compression/barabri (0 = off)
+#   gate      0..100        noise gate: bolne ke beech ki halki hiss dabao (0 = off)
 #   lufs      -30..-8       final loudness
 # Presets: natural = halka, studio = poora. "custom" = panel ke sliders jo bhi hon.
 # Peak ceiling -1.5 dBTP.
@@ -149,14 +167,14 @@ LOUDNESS_TARGET = -16.0
 LIMITER_CEILING_DB = -1.5     # output peak
 
 ENHANCE_PRESETS = {
-    "natural": {"lowcut": 70, "mud": 0, "presence": 0, "air": 0, "deess": 0, "comp": 20,
+    "natural": {"lowcut": 70, "mud": 0, "presence": 0, "air": 0, "deess": 0, "comp": 20, "gate": 0,
                 "lufs": -16, "attack": 20, "release": 250},
-    "studio":  {"lowcut": 80, "mud": 2, "presence": 2.5, "air": 1.5, "deess": 40, "comp": 40,
+    "studio":  {"lowcut": 80, "mud": 2, "presence": 2.5, "air": 1.5, "deess": 40, "comp": 40, "gate": 30,
                 "lufs": -16, "attack": 10, "release": 180},
 }
 ENHANCE_LIMITS = {
     "lowcut": (0, 200), "mud": (0, 8), "presence": (0, 6), "air": (0, 6),
-    "deess": (0, 100), "comp": (0, 100), "lufs": (-30, -8),
+    "deess": (0, 100), "comp": (0, 100), "gate": (0, 100), "lufs": (-30, -8),
 }
 
 
@@ -181,6 +199,11 @@ def build_chain(p):
     parts = []
     if p["lowcut"] > 0:
         parts.append(f"highpass=f={p['lowcut']:g}")
+    if p["gate"] > 0:
+        thr = 10 ** ((-65.0 + 0.25 * p["gate"]) / 20.0)          # 30 -> -57.5 dB, 100 -> -40 dB
+        floor = 10 ** (-(6.0 + 0.18 * p["gate"]) / 20.0)         # 30 -> -11.4 dB, 100 -> -24 dB
+        ratio = 2.0 + p["gate"] / 100.0 * 4.0
+        parts.append(f"agate=threshold={thr:.5f}:ratio={ratio:.2f}:attack=15:release=300:range={floor:.4f}")
     if p["mud"] > 0:
         parts.append(f"equalizer=f=250:t=q:w=1.2:g=-{p['mud']:g}")
     if p["presence"] > 0:
@@ -269,6 +292,10 @@ def main():
                    help="noise removal 0-100 (default 100)")
     p.add_argument("--enhance", default="off", choices=["off", "natural", "studio", "custom"],
                    help="voice enhance (aakhri polish): off / natural / studio / custom")
+    p.add_argument("--hiss", type=int, default=0,
+                   help="extra hiss/noise reduction 0-100 (FFmpeg afftdn, denoise ke baad)")
+    p.add_argument("--cleanup", default="normal", choices=["normal", "strong", "max"],
+                   help="noise cleanup: normal / strong (post-filter) / max (post-filter + 2nd pass)")
     p.add_argument("--enhance-params", default="",
                    help='JSON: {"lowcut":80,"mud":2,"presence":2.5,"air":1.5,"deess":40,"comp":40,"lufs":-16}')
     p.add_argument("--ffmpeg", default="ffmpeg", help="ffmpeg ka path")
@@ -316,7 +343,13 @@ def main():
 
         emit("denoise", 70)
         clean = out_dir / f"{name}_voice_clean.wav"
-        denoise(vocals, clean, a.strength)
+        denoise(vocals, clean, a.strength, a.cleanup)
+
+        if a.hiss > 0:
+            try:
+                extra_denoise(clean, a.hiss, a.ffmpeg, tmp)
+            except Exception as e:  # noqa: BLE001
+                print(json.dumps({"stage": "warn", "message": "Extra hiss reduction skipped: " + str(e)[:200]}), flush=True)
 
         noise = None
         emit("noise", 78)
