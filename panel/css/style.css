@@ -67,3 +67,12 @@ h2 {
 #setupFill { height: 100%; width: 0; background: #2d7ff9; transition: width .25s; }
 .foot { margin-top: 20px; padding-top: 10px; border-top: 1px solid #333; color: #7d7d7d; font-size: 11px; }
 .foot .link { display: inline-block; margin: 6px 12px 0 0; font-size: 11px; }
+
+/* ---- license ---- */
+.inp {
+  width: 100%; padding: 8px 10px; background: #1a1a1a; color: #e6e6e6;
+  border: 1px solid #3a3a3a; border-radius: 4px; font: inherit; letter-spacing: .04em;
+  -webkit-user-select: text; user-select: text;
+}
+.inp:focus { outline: none; border-color: #2d7ff9; }
+#licInfo { display: block; margin-top: 4px; }

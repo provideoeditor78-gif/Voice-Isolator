@@ -1,4 +1,4 @@
-/* Voice Separator panel logic.
+/* Voice Isolator panel logic.
  * 1) Pehli dafa: "Download essential files" -> runtime install (installer.js)
  * 2) Phir: source chuno -> engine chalao -> results project mein import
  */
@@ -33,6 +33,7 @@
   /* ---------- views ---------- */
 
   function showView(name) {
+    $('viewLicense').style.display = (name === 'license') ? '' : 'none';
     $('viewSetup').style.display = (name === 'setup') ? '' : 'none';
     $('viewMain').style.display = (name === 'main') ? '' : 'none';
   }
@@ -183,6 +184,7 @@
 
   function enterMain() {
     showView('main');
+    refreshLicenseInfo();
     var inst = VSInstaller.readInstalled() || {};
     $('rtInfo').textContent = 'Engine: ' + (inst.packId || 'dev') + (inst.version ? ' v' + inst.version : '');
     $('btnUpdate').style.display = 'none';
@@ -298,9 +300,20 @@
 
   function run() {
     if (!state.src) return;
+    VSLicense.check().then(function (st) {
+      if (st.state !== 'valid') {
+        setStatus('License problem. Please activate again.', 'err');
+        showLicense(st.message || '', st.message ? 'err' : '');
+        return;
+      }
+      doRun();
+    });
+  }
+
+  function doRun() {
     var strength = parseInt($('strength').value, 10);
     var name = path.basename(state.src, path.extname(state.src));
-    var outDir = path.join(path.dirname(state.src), 'VoiceSeparator_' + name);
+    var outDir = path.join(path.dirname(state.src), 'VoiceIsolator_' + name);
 
     state.cancelled = false;
     setBusy(true);
@@ -321,7 +334,7 @@
         return;
       }
       setStatus('Importing into project\u2026');
-      return callHost('importFiles', { files: list, bin: 'Voice Separator' }).then(function () {
+      return callHost('importFiles', { files: list, bin: 'Voice Isolator' }).then(function () {
         setProgress(100);
         setStatus('Done. Imported ' + list.length + ' file(s). Saved in: ' + outDir, 'ok');
       });
@@ -335,6 +348,67 @@
     if (!state.proc) return;
     state.cancelled = true;
     try { state.proc.kill(); } catch (e) { /* ignore */ }
+  }
+
+
+  /* ---------- license ---------- */
+
+  function afterLicense() {
+    if (isInstalled()) enterMain(); else initSetup(false);
+  }
+
+  function showLicense(msg, cls) {
+    showView('license');
+    $('licStatus').textContent = msg || '\u00a0';
+    $('licStatus').className = 'status' + (cls ? ' ' + cls : '');
+    $('lnkBuy').style.display = VSLicense.buyUrl() ? '' : 'none';
+    $('btnActivate').disabled = false;
+  }
+
+  function doActivate() {
+    var key = $('licKey').value;
+    $('btnActivate').disabled = true;
+    $('licStatus').textContent = 'Checking\u2026';
+    $('licStatus').className = 'status';
+    VSLicense.activate(key).then(function () {
+      $('licKey').value = '';
+      $('btnActivate').disabled = false;
+      afterLicense();
+    }).catch(function (e) {
+      $('btnActivate').disabled = false;
+      $('licStatus').textContent = e.message;
+      $('licStatus').className = 'status err';
+    });
+  }
+
+  function refreshLicenseInfo() {
+    VSLicense.check().then(function (st) {
+      if (st.disabled || st.state !== 'valid') {
+        $('licInfo').textContent = '';
+        $('lnkDeactivate').style.display = 'none';
+        return;
+      }
+      $('licInfo').textContent = 'License: ' + st.hint;
+      $('lnkDeactivate').style.display = '';
+    });
+  }
+
+  function doDeactivate() {
+    if (!window.confirm('Deactivate this computer? You can then use your key on another computer.')) return;
+    VSLicense.deactivate().then(function () {
+      showLicense('This computer was deactivated.', '');
+    }).catch(function (e) { setStatus(e.message, 'err'); });
+  }
+
+  function boot() {
+    VSLicense.ensure().then(function (st) {
+      if (st.state === 'valid') { afterLicense(); return; }
+      if (st.state === 'expired') {
+        showLicense(st.message || 'Your license must be verified online. Connect to the internet and enter your key again.', 'err');
+        return;
+      }
+      showLicense(st.message || '', st.message ? 'err' : '');
+    }).catch(function (e) { showLicense(e.message, 'err'); });
   }
 
   /* ---------- Wire up ---------- */
@@ -367,7 +441,12 @@
     setSetupStatus('');
   });
 
+  $('btnActivate').addEventListener('click', doActivate);
+  $('licKey').addEventListener('keydown', function (e) { if (e.keyCode === 13) doActivate(); });
+  $('lnkBuy').addEventListener('click', function (e) { e.preventDefault(); cs.openURLInDefaultBrowser(VSLicense.buyUrl()); });
+  $('lnkDeactivate').addEventListener('click', function (e) { e.preventDefault(); doDeactivate(); });
+
   window.addEventListener('unload', function () { cancel(); cancelInstall(); });
 
-  if (isInstalled()) enterMain(); else initSetup(false);
+  boot();
 })();

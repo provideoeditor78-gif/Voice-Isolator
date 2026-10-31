@@ -2,16 +2,30 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Voice Separator</title>
+  <title>Voice Isolator</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+
+  <!-- ============ LICENSE ============ -->
+  <div id="viewLicense" class="wrap" style="display:none">
+    <section>
+      <h2>Activate</h2>
+      <p class="lead">Enter the license key you received after your purchase.</p>
+    </section>
+    <section>
+      <input id="licKey" class="inp" type="text" placeholder="License key" spellcheck="false" autocomplete="off">
+      <button id="btnActivate" class="btn primary" style="margin-top:10px">Activate</button>
+      <div id="licStatus" class="status">&nbsp;</div>
+      <a id="lnkBuy" class="link" href="#">Don't have a key? Buy a license</a>
+    </section>
+  </div>
 
   <!-- ============ SETUP (pehli dafa) ============ -->
   <div id="viewSetup" class="wrap" style="display:none">
     <section>
       <h2>Setup</h2>
-      <p class="lead">Voice Separator needs its AI components. This is a <b>one-time download</b>. After that it works fully offline.</p>
+      <p class="lead">Voice Isolator needs its AI components. This is a <b>one-time download</b>. After that it works fully offline.</p>
     </section>
 
     <section>
@@ -69,13 +83,16 @@
 
     <section class="foot">
       <span id="rtInfo"></span>
+      <span id="licInfo"></span>
       <a id="btnUpdate" class="link" href="#" style="display:none">Update available</a>
       <a id="lnkReinstall" class="link" href="#">Reinstall / change</a>
+      <a id="lnkDeactivate" class="link" href="#" style="display:none">Deactivate this computer</a>
     </section>
   </div>
 
   <script src="js/CSInterface.js"></script>
   <script src="js/installer.js"></script>
+  <script src="js/license.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

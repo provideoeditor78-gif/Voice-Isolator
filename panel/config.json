@@ -1,5 +1,9 @@
 {
-  "baseUrl": "https://YOUR-HOST/voicesep/v1/",
+  "baseUrl": "https://YOUR-HOST/voiceisolator/v1/",
+  "licenseApi": "https://YOUR-SITE/wp-json/voice-isolator/v1/",
+  "buyUrl": "https://YOUR-SITE/",
+  "productCode": "voiceisolator",
+  "licenseRequired": true,
   "devPython": "",
   "ffmpeg": "ffmpeg"
 }

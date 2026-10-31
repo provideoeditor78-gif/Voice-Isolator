@@ -27,7 +27,7 @@ WORK = ROOT / "work"
 WIN_PY = "3.10.11"
 PBS_TAG, PBS_PY = "20240224", "3.10.13"
 TORCH = ["torch==2.1.2", "torchaudio==2.1.2"]
-UA = {"User-Agent": "Mozilla/5.0 VoiceSeparatorBuild"}
+UA = {"User-Agent": "Mozilla/5.0 VoiceIsolatorBuild"}
 
 
 def run(cmd, env=None):
@@ -53,6 +53,38 @@ def sha256_of(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def flatten_symlinks(root):
+    """Symlinks ki jagah asli files rakho (Windows tar.exe symlink nahi bana sakta).
+    HuggingFace cache: snapshots/<hash>/file -> ../../blobs/<sha>.  Phir blobs hata do."""
+    root = Path(root)
+    links = []
+    for dp, dns, fns in os.walk(root):
+        for n in dns + fns:
+            p = Path(dp) / n
+            if p.is_symlink():
+                links.append(p)
+    for p in links:
+        target = p.resolve()
+        p.unlink()
+        if target.is_dir():
+            shutil.copytree(target, p)
+        else:
+            shutil.copy2(target, p)
+    for b in [d for d in root.rglob("blobs") if d.is_dir() and d.parent.name.startswith("models--")]:
+        shutil.rmtree(b)
+    return len(links)
+
+
+def find_symlinks(root):
+    out = []
+    for dp, dns, fns in os.walk(root):
+        for n in dns + fns:
+            p = Path(dp) / n
+            if p.is_symlink():
+                out.append(p)
+    return out
 
 
 def make_pack(W, pid, version):
@@ -112,7 +144,23 @@ def build(pid, version):
         pip(py, *TORCH, "--index-url", "https://download.pytorch.org/whl/cu121")
     else:
         pip(py, *TORCH)
-    pip(py, "demucs", "deepfilternet", "soundfile", "imageio-ffmpeg", "numpy<2")
+    if pid == "mac-x64":
+        # Intel Mac: Demucs ki library "sphn" ka Intel wheel maujood nahi (compile fail hota tha).
+        # Demucs sphn sirf audio padhne ke liye try karta hai aur ffmpeg par fallback karta hai,
+        # isliye demucs ko bina sphn install karke ek chhota stub rakh dete hain.
+        pip(py, "demucs", "--no-deps")
+        pip(py, "einops", "huggingface-hub", "julius", "lameenc", "pyyaml", "safetensors", "tqdm")
+        pip(py, "deepfilternet", "soundfile", "imageio-ffmpeg", "numpy<2")
+        site = subprocess.check_output([str(py), "-c", "import sysconfig;print(sysconfig.get_paths()['purelib'])"],
+                                       text=True).strip()
+        stub = Path(site) / "sphn"
+        stub.mkdir(exist_ok=True)
+        (stub / "__init__.py").write_text(
+            '"""Stub: sphn is not available on Intel Mac. Demucs falls back to ffmpeg."""\n'
+            'def read(*a, **k):\n    raise RuntimeError("sphn not available")\n'
+            'def write(*a, **k):\n    raise RuntimeError("sphn not available")\n')
+    else:
+        pip(py, "demucs", "deepfilternet", "soundfile", "imageio-ffmpeg", "numpy<2")
 
     print("== [3/6] FFmpeg", flush=True)
     (W / "bin").mkdir()
@@ -136,6 +184,7 @@ def build(pid, version):
     total = sum(f.stat().st_size for f in (W / "models").rglob("*") if f.is_file())
     if total < 100 * 1024 * 1024:
         sys.exit("Models theek se download nahi hue (size bohat chhota).")
+    print("symlinks -> files:", flatten_symlinks(W / "models"), flush=True)
 
     if is_win:
         try:
@@ -154,6 +203,10 @@ def build(pid, version):
             sys.exit("Test fail: " + n + " nahi bani")
 
     print("== [6/6] Pack", flush=True)
+    if is_win:
+        left = find_symlinks(W)
+        if left:
+            sys.exit("Windows pack mein symlinks bache hain: " + ", ".join(map(str, left[:5])))
     make_pack(W, pid, version)
     shutil.rmtree(W, ignore_errors=True)
 

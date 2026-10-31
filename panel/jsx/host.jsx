@@ -99,16 +99,16 @@ function getSelectedMedia() {
 }
 
 // ---------------------------------------------------------------
-// Files ko project mein import karo ("Voice Separator" bin/folder mein)
+// Files ko project mein import karo ("Voice Isolator" bin/folder mein)
 // ---------------------------------------------------------------
 function importFiles(opts) {
     try {
         var files = opts.files;
-        var binName = opts.bin || "Voice Separator";
+        var binName = opts.bin || "Voice Isolator";
         var i;
 
         if (vsIsAE()) {
-            app.beginUndoGroup("Voice Separator import");
+            app.beginUndoGroup("Voice Isolator import");
             var folder = null;
             for (i = 1; i <= app.project.numItems; i++) {
                 var it = app.project.item(i);

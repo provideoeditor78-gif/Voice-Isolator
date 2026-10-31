@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ExtensionManifest Version="7.0" ExtensionBundleId="com.yourname.voicesep" ExtensionBundleVersion="1.0.0" ExtensionBundleName="Voice Separator" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.asadfx.voiceisolator" ExtensionBundleVersion="1.0.0" ExtensionBundleName="Voice Isolator" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
-    <Extension Id="com.yourname.voicesep.panel" Version="1.0.0"/>
+    <Extension Id="com.asadfx.voiceisolator.panel" Version="1.0.0"/>
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
@@ -16,7 +16,7 @@
     </RequiredRuntimeList>
   </ExecutionEnvironment>
   <DispatchInfoList>
-    <Extension Id="com.yourname.voicesep.panel">
+    <Extension Id="com.asadfx.voiceisolator.panel">
       <DispatchInfo>
         <Resources>
           <MainPath>./index.html</MainPath>
@@ -31,7 +31,7 @@
         </Lifecycle>
         <UI>
           <Type>Panel</Type>
-          <Menu>Voice Separator</Menu>
+          <Menu>Voice Isolator</Menu>
           <Geometry>
             <Size><Width>340</Width><Height>560</Height></Size>
             <MinSize><Width>280</Width><Height>420</Height></MinSize>

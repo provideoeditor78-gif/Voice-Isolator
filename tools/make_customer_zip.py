@@ -14,7 +14,7 @@ DIST = ROOT / "dist"
 
 def build(base_url, version):
     DIST.mkdir(exist_ok=True)
-    top = f"VoiceSeparator_Panel_v{version}"
+    top = f"VoiceIsolator_Panel_v{version}"
     out = DIST / f"{top}.zip"
     cfg_path = ROOT / "panel" / "config.json"
     cfg = json.loads(cfg_path.read_text(encoding="utf-8-sig"))

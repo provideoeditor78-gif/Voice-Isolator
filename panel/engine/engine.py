@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Voice Separator engine: ek audio/video file ko tod kar 3 WAV files banata hai.
+Voice Isolator engine: ek audio/video file ko tod kar 3 WAV files banata hai.
 
   <name>_voice_clean.wav     voice + noise removal (DeepFilterNet)
   <name>_voice_original.wav  voice, bina denoise ke (Demucs)
@@ -125,6 +125,13 @@ def main():
     if a.runtime:
         MODELS = Path(a.runtime) / "models"
     setup_offline_env()
+
+    # Demucs agar kabhi ffmpeg maange to wahi mile jo hum ne bundle kiya hai
+    ffp = Path(a.ffmpeg)
+    if ffp.exists():
+        os.environ["PATH"] = str(ffp.resolve().parent) + os.pathsep + os.environ.get("PATH", "")
+    elif (MODELS.parent / "bin").exists():
+        os.environ["PATH"] = str(MODELS.parent / "bin") + os.pathsep + os.environ.get("PATH", "")
 
     if a.check:
         self_check()
