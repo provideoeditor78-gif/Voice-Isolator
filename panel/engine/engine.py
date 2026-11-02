@@ -92,24 +92,43 @@ def pick_device():
     return "cpu"
 
 
-def to_wav(src, dst, ffmpeg):
-    """Kisi bhi audio/video ko 44.1kHz stereo WAV mein badal do."""
-    cmd = [ffmpeg, "-y", "-i", str(src), "-vn", "-ac", "2", "-ar", "44100",
-           "-c:a", "pcm_s16le", str(dst)]
+def to_wav(src, dst, ffmpeg, start=0.0, duration=0.0):
+    """Kisi bhi audio/video ko 44.1kHz stereo WAV mein badal do.
+    start/duration (seconds) dein to sirf utna hissa nikalta he."""
+    cmd = [ffmpeg, "-y"]
+    if start and start > 0:
+        cmd += ["-ss", f"{start:.3f}"]
+    cmd += ["-i", str(src)]
+    if duration and duration > 0:
+        cmd += ["-t", f"{duration:.3f}"]
+    cmd += ["-vn", "-ac", "2", "-ar", "44100", "-c:a", "pcm_s24le", str(dst)]
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
         fail("FFmpeg convert fail: " + r.stderr[-400:])
 
 
-def separate(wav, workdir, device):
-    """Demucs (htdemucs) se vocals aur no_vocals nikalo."""
+def best_model_available():
+    """Pack mein htdemucs_ft (Best quality) maujood he? Base htdemucs 1 file, ft ki 4 files = kam az kam 5 .th."""
+    if not (MODELS / "torch").exists():
+        return True            # dev mode: Demucs zaroorat par khud download kar lega
+    ck = MODELS / "torch" / "hub" / "checkpoints"
+    return ck.is_dir() and len(list(ck.glob("*.th"))) >= 5
+
+
+def separate(wav, workdir, device, model="htdemucs", extra=None):
+    """Demucs se vocals aur no_vocals nikalo.
+    model: htdemucs (Fast) ya htdemucs_ft (Best/Maximum).  extra: jaise ["--shifts", "3", "--overlap", "0.5"]."""
     out = workdir / "sep"
-    cmd = [sys.executable, "-m", "demucs", "--two-stems=vocals",
-           "-n", "htdemucs", "-d", device, "-o", str(out), str(wav)]
-    r = subprocess.run(cmd, capture_output=True, text=True, env=os.environ.copy())
+    base = [sys.executable, "-m", "demucs", "--two-stems=vocals",
+            "-n", model, "-d", device, "-o", str(out)] + list(extra or [])
+    r = None
+    for hi_res in (["--int24"], []):          # pehle 24-bit output, na chale to normal
+        r = subprocess.run(base + hi_res + [str(wav)], capture_output=True, text=True, env=os.environ.copy())
+        if r.returncode == 0:
+            break
     if r.returncode != 0:
         fail("Demucs fail: " + (r.stderr or r.stdout)[-600:])
-    folder = out / "htdemucs" / wav.stem
+    folder = out / model / wav.stem
     return folder / "vocals.wav", folder / "no_vocals.wav"
 
 
@@ -133,7 +152,7 @@ def denoise(vocals_path, out_path, strength, cleanup="normal"):
     if cleanup == "max":
         clean = enhance(model, df_state, clean, atten_lim_db=atten)
 
-    sf.write(str(out_path), clean.detach().cpu().numpy().T, df_state.sr())
+    sf.write(str(out_path), clean.detach().cpu().numpy().T, df_state.sr(), subtype="PCM_24")
 
 
 def extra_denoise(path, amount, ffmpeg, workdir):
@@ -292,6 +311,14 @@ def main():
                    help="noise removal 0-100 (default 100)")
     p.add_argument("--enhance", default="off", choices=["off", "natural", "studio", "custom"],
                    help="voice enhance (aakhri polish): off / natural / studio / custom")
+    p.add_argument("--start", type=float, default=0.0, help="sirf is second se shuru karo")
+    p.add_argument("--duration", type=float, default=0.0, help="sirf itne second process karo (0 = poori)")
+    p.add_argument("--preview", type=float, default=0.0,
+                   help="chhota sample: itne second (range ke beech se) process karo")
+    p.add_argument("--keep-input", action="store_true", help="<name>_input.wav (jo hissa process hua) bhi do")
+    p.add_argument("--quality", default="fast", choices=["fast", "best", "max"],
+                   help="separation quality: fast (htdemucs) / best (htdemucs_ft, ~4x slower) / "
+                        "max (htdemucs_ft + shifts 3 + overlap 0.5, ~10x slower)")
     p.add_argument("--hiss", type=int, default=0,
                    help="extra hiss/noise reduction 0-100 (FFmpeg afftdn, denoise ke baad)")
     p.add_argument("--cleanup", default="normal", choices=["normal", "strong", "max"],
@@ -336,10 +363,34 @@ def main():
 
         emit("convert", 5)
         wav = tmp / "input.wav"
-        to_wav(src, wav, a.ffmpeg)
+        to_wav(src, wav, a.ffmpeg, a.start, a.duration)
 
-        emit("separate", 15, device=device)
-        vocals, music = separate(wav, tmp, device)
+        if a.preview > 0:
+            import soundfile as sf
+            total = sf.info(str(wav)).duration
+            if total > a.preview + 0.5:
+                cut = tmp / "preview.wav"
+                _ffmpeg_run([a.ffmpeg, "-hide_banner", "-nostats", "-y", "-ss", f"{(total - a.preview) / 2:.3f}",
+                             "-i", str(wav), "-t", f"{a.preview:.3f}", "-c:a", "pcm_s24le", str(cut)])
+                wav = cut
+        input_copy = None
+        if a.keep_input:
+            input_copy = out_dir / f"{name}_input.wav"
+            shutil.copy(wav, input_copy)
+
+        model = "htdemucs"
+        sep_extra = []
+        if a.quality in ("best", "max"):
+            if best_model_available():
+                model = "htdemucs_ft"
+                if a.quality == "max":
+                    sep_extra = ["--shifts", "3", "--overlap", "0.5"]
+            else:
+                print(json.dumps({"stage": "warn", "message":
+                      "Best quality needs the updated engine pack, so Fast was used. Use 'Update available' / 'Reinstall' in the panel."}),
+                      flush=True)
+        emit("separate", 15, device=device, model=model)
+        vocals, music = separate(wav, tmp, device, model, sep_extra)
 
         emit("denoise", 70)
         clean = out_dir / f"{name}_voice_clean.wav"
@@ -369,7 +420,12 @@ def main():
                 overrides = {}
             try:
                 enhanced = out_dir / f"{name}_voice_enhanced.wav"
-                enhance_voice(clean, enhanced, a.enhance, a.ffmpeg, overrides)
+                try:
+                    enhance_voice(clean, enhanced, a.enhance, a.ffmpeg, overrides)
+                except Exception:  # noqa: BLE001  (kisi FFmpeg filter ka masla: gate ke baghair dobara koshish)
+                    if (overrides.get("gate", ENHANCE_PRESETS.get(a.enhance, {}).get("gate", 0)) or 0) <= 0:
+                        raise
+                    enhance_voice(clean, enhanced, a.enhance, a.ffmpeg, dict(overrides, gate=0))
             except Exception as e:  # noqa: BLE001  (polish optional hai, baqi kaam na rukay)
                 enhanced = None
                 print(json.dumps({"stage": "warn", "message": "Voice enhance skipped: " + str(e)[:200]}), flush=True)
@@ -385,6 +441,8 @@ def main():
         files["voice_enhanced"] = str(enhanced)
     if noise is not None:
         files["noise"] = str(noise)
+    if input_copy is not None:
+        files["input"] = str(input_copy)
     emit("done", 100, files=files)
 
 

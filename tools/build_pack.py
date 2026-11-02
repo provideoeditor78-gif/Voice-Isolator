@@ -195,9 +195,24 @@ def build(pid, version):
     (W / "models" / "torch").mkdir(parents=True)
     (W / "models" / "hf").mkdir(parents=True)
     run([py, "-c", "from demucs.pretrained import get_model; get_model('htdemucs')"], env=env)
+    # "Best" quality: htdemucs_ft (4 fine-tuned models). OPTIONAL: fail ho to build nahi rukti,
+    # bas pack mein Best nahi hoga (engine khud Fast par aa jata he).
+    ft_ok = True
+    try:
+        run([py, "-c", "from demucs.pretrained import get_model; get_model('htdemucs_ft')"], env=env)
+    except subprocess.CalledProcessError as e:
+        ft_ok = False
+        print("WARNING: htdemucs_ft download fail - pack bina Best quality ke banega:", e, flush=True)
     run([py, "-c", "import shutil,sys; from df.enhance import maybe_download_model;"
          "p=maybe_download_model('DeepFilterNet3');"
          "shutil.copytree(p, sys.argv[1], dirs_exist_ok=True)", W / "models" / "DeepFilterNet3"], env=env)
+    ckpts = sorted((W / "models" / "torch" / "hub" / "checkpoints").glob("*.th"))
+    print("Demucs checkpoints:", [c.name for c in ckpts], flush=True)
+    if len(ckpts) < 1:
+        sys.exit("Demucs base model (htdemucs) download nahi hua.")
+    if len(ckpts) < 5:
+        ft_ok = False
+        print("WARNING: htdemucs_ft files incomplete (" + str(len(ckpts)) + " checkpoints) - Best quality pack mein nahi hogi", flush=True)
     total = sum(f.stat().st_size for f in (W / "models").rglob("*") if f.is_file())
     if total < 100 * 1024 * 1024:
         sys.exit("Models theek se download nahi hue (size bohat chhota).")
@@ -223,12 +238,24 @@ def build(pid, version):
     for n in ("test_voice_clean.wav", "test_music.wav", "test_voice_original.wav"):
         if not (out / n).exists():
             sys.exit("Test fail: " + n + " nahi bani")
+    if not (out / "test_noise.wav").exists():
+        print("WARNING: noise layer file was not created (optional)", flush=True)
     if not (out / "test_voice_enhanced.wav").exists():
         # Voice enhance (FFmpeg filters). Windows par zaroori, Mac par sirf warning.
         msg = "Voice enhance output nahi bana (FFmpeg filters check karein)"
         if is_win:
             sys.exit("Test fail: " + msg)
         print("WARNING:", msg, flush=True)
+
+    if ft_ok:
+        # Best quality test: sirf warning, build nahi rokta
+        out_best = WORK / f"testout_best_{pid}"
+        r = subprocess.run([str(c) for c in [py, ENGINE, test_wav, "-o", out_best, "--ffmpeg", ff, "--runtime", W,
+                                             "--quality", "max"]], env=test_env, capture_output=True, text=True)
+        if r.returncode != 0 or not (out_best / "test_voice_clean.wav").exists():
+            print("WARNING: Best quality test fail hua:", (r.stdout + r.stderr)[-800:], flush=True)
+        else:
+            print("Best/Maximum quality test OK", flush=True)
 
     print("== [6/6] Pack", flush=True)
     if is_win:
