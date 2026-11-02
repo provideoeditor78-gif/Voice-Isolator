@@ -164,7 +164,7 @@ function importFiles(opts) {
 // importAndPlace: files import karo (naam ke saath) + timeline mein layers/clips daalo
 //   opts = { items:[{path, kind:"voice"|"music"|"noise", name}], bin, src, timeline, muteOriginal, srcOffset }
 //   srcOffset = source file ke kitne second se processing shuru hui (0 = poori file)
-// Naam: voice = original file ka naam, "Music", "Noise". Noise muted add hoti hai.
+// Naam: voice = original file ka naam, "Music", "Noise". item.muted = true wali layers muted add hoti hain.
 // ===============================================================
 function vsNormPath(p) {
     return String(p || "").replace(/\\/g, "/").toLowerCase();
@@ -234,7 +234,7 @@ function vsAEImportAndPlace(opts) {
             } else {
                 lay.startTime = 0;
             }
-            if (items[i].kind === "noise") { try { lay.audioEnabled = false; } catch (eM) {} }
+            if (items[i].muted) { try { lay.audioEnabled = false; } catch (eM) {} }
             placed++;
         }
         if (anchor && opts.muteOriginal) { try { anchor.audioEnabled = false; } catch (eO) {} }
@@ -353,7 +353,15 @@ function vsPPROImportAndPlace(opts) {
                 }
             } catch (eC) {}
         }
-        if (items[i].kind === "noise" && tracks[i].empty) { try { tr.setMute(1); } catch (eM) {} }
+        if (items[i].muted) {
+            // clip ko disable karo (muted), aur agar track sirf isi ke liye khali tha to track bhi mute
+            for (j = 0; j < tr.clips.numItems; j++) {
+                try {
+                    if (Math.abs(tr.clips[j].start.seconds - placeAt) < 0.05) tr.clips[j].disabled = true;
+                } catch (eDis) {}
+            }
+            if (tracks[i].empty) { try { tr.setMute(1); } catch (eM) {} }
+        }
         placed++;
     }
     if (placed < items.length) note += " Not enough free audio tracks - add tracks and place the rest from the 'Voice Isolator' bin.";

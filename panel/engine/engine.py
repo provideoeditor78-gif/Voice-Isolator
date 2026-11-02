@@ -108,11 +108,10 @@ def to_wav(src, dst, ffmpeg, start=0.0, duration=0.0):
 
 
 def best_model_available():
-    """Pack mein htdemucs_ft (Best quality) maujood he? Base htdemucs 1 file, ft ki 4 files = kam az kam 5 .th."""
-    if not (MODELS / "torch").exists():
+    """Pack mein htdemucs_ft (Best/Maximum) maujood he? Build marker file likhta he jab model offline load ho chuka ho."""
+    if not ((MODELS / "hf").exists() or (MODELS / "torch").exists()):
         return True            # dev mode: Demucs zaroorat par khud download kar lega
-    ck = MODELS / "torch" / "hub" / "checkpoints"
-    return ck.is_dir() and len(list(ck.glob("*.th"))) >= 5
+    return (MODELS / "ft_ok.txt").exists()
 
 
 def separate(wav, workdir, device, model="htdemucs", extra=None):
@@ -127,7 +126,7 @@ def separate(wav, workdir, device, model="htdemucs", extra=None):
         if r.returncode == 0:
             break
     if r.returncode != 0:
-        fail("Demucs fail: " + (r.stderr or r.stdout)[-600:])
+        raise RuntimeError("Demucs fail: " + (r.stderr or r.stdout)[-600:])
     folder = out / model / wav.stem
     return folder / "vocals.wav", folder / "no_vocals.wav"
 
@@ -140,10 +139,11 @@ def denoise(vocals_path, out_path, strength, cleanup="normal"):
 
     pf = cleanup in ("strong", "max")
     bundled = MODELS / "DeepFilterNet3"
-    if bundled.is_dir():
-        model, df_state, _ = init_df(model_base_dir=str(bundled), post_filter=pf, log_file=None)
-    else:
-        model, df_state, _ = init_df(post_filter=pf, log_file=None)
+    kw = {"model_base_dir": str(bundled)} if bundled.is_dir() else {}
+    try:
+        model, df_state, _ = init_df(post_filter=pf, log_file=None, **kw)
+    except TypeError:                       # is DeepFilterNet version mein post_filter nahi
+        model, df_state, _ = init_df(log_file=None, **kw)
     audio, _ = load_audio(str(vocals_path), sr=df_state.sr())
 
     # 100 = poora noise hatao. Kam strength = thoda noise rehne do (natural lagti hai)
@@ -390,7 +390,16 @@ def main():
                       "Best quality needs the updated engine pack, so Fast was used. Use 'Update available' / 'Reinstall' in the panel."}),
                       flush=True)
         emit("separate", 15, device=device, model=model)
-        vocals, music = separate(wav, tmp, device, model, sep_extra)
+        try:
+            vocals, music = separate(wav, tmp, device, model, sep_extra)
+        except RuntimeError as first_err:
+            # 24-bit input kisi library ko pasand na aaye to 16-bit input se dobara koshish
+            wav16 = tmp / "input16.wav"
+            _ffmpeg_run([a.ffmpeg, "-hide_banner", "-nostats", "-y", "-i", str(wav), "-c:a", "pcm_s16le", str(wav16)])
+            try:
+                vocals, music = separate(wav16, tmp, device, model, sep_extra)
+            except RuntimeError:
+                fail(str(first_err))
 
         emit("denoise", 70)
         clean = out_dir / f"{name}_voice_clean.wav"

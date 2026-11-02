@@ -206,17 +206,24 @@ def build(pid, version):
     run([py, "-c", "import shutil,sys; from df.enhance import maybe_download_model;"
          "p=maybe_download_model('DeepFilterNet3');"
          "shutil.copytree(p, sys.argv[1], dirs_exist_ok=True)", W / "models" / "DeepFilterNet3"], env=env)
-    ckpts = sorted((W / "models" / "torch" / "hub" / "checkpoints").glob("*.th"))
-    print("Demucs checkpoints:", [c.name for c in ckpts], flush=True)
-    if len(ckpts) < 1:
-        sys.exit("Demucs base model (htdemucs) download nahi hua.")
-    if len(ckpts) < 5:
-        ft_ok = False
-        print("WARNING: htdemucs_ft files incomplete (" + str(len(ckpts)) + " checkpoints) - Best quality pack mein nahi hogi", flush=True)
     total = sum(f.stat().st_size for f in (W / "models").rglob("*") if f.is_file())
     if total < 100 * 1024 * 1024:
         sys.exit("Models theek se download nahi hue (size bohat chhota).")
     print("symlinks -> files:", flatten_symlinks(W / "models"), flush=True)
+
+    # "Best" quality tabhi on jab htdemucs_ft internet ke baghair load ho jaye (customer ke PC jaisa).
+    if ft_ok:
+        off = dict(env)
+        off["HF_HUB_OFFLINE"] = "1"
+        off["TRANSFORMERS_OFFLINE"] = "1"
+        r = subprocess.run([str(py), "-c", "from demucs.pretrained import get_model; get_model('htdemucs_ft'); print('FT_LOAD_OK')"],
+                           env=off, capture_output=True, text=True)
+        if r.returncode == 0 and "FT_LOAD_OK" in r.stdout:
+            (W / "models" / "ft_ok.txt").write_text("htdemucs_ft verified offline\n")
+            print("htdemucs_ft offline load OK -> Best/Maximum quality enabled", flush=True)
+        else:
+            ft_ok = False
+            print("WARNING: htdemucs_ft offline load fail - Best quality disabled in this pack:\n" + (r.stdout + r.stderr)[-800:], flush=True)
 
     if is_win:
         try:

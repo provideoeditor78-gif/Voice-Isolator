@@ -126,14 +126,14 @@
       <label class="chk"><input type="checkbox" id="optClean"> Clean voice (noise removed only)</label>
       <label class="chk"><input type="checkbox" id="optOrig"> Original voice (no denoise)</label>
       <label class="chk"><input type="checkbox" id="optMusic" checked> Music / background</label>
-      <label class="chk"><input type="checkbox" id="optNoise" checked> Noise (what was removed)</label>
+      <label class="chk"><input type="checkbox" id="optNoise"> Noise (what was removed) – optional</label>
     </section>
 
     <section>
       <h2>4. Timeline</h2>
       <label class="chk"><input type="checkbox" id="optTimeline" checked> Add layers to the timeline automatically</label>
-      <label class="chk"><input type="checkbox" id="optMuteOrig"> Mute the original clip</label>
-      <p class="hint">Layers are named with the original file name (voice), "Music" and "Noise", placed in sync with the selected clip. The Noise layer is added muted.</p>
+      <label class="chk"><input type="checkbox" id="optMuteOrig" checked> Mute the original clip</label>
+      <p class="hint">Timeline gets two layers: the cleaned voice (named after your file, unmuted) and "Music" (muted). The original clip is muted so you only hear the clean voice. Turn Music on whenever you need it.</p>
     </section>
 
     <section>

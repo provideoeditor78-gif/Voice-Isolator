@@ -382,10 +382,10 @@
       if ($('optOrig').checked) voices.push({ path: files.voice_original, suffix: ' (original)' });
       var items = [];
       voices.forEach(function (v, i) {
-        items.push({ path: v.path, kind: 'voice', name: name + (i === 0 ? '' : v.suffix) });
+        items.push({ path: v.path, kind: 'voice', muted: i !== 0, name: name + (i === 0 ? '' : v.suffix) });
       });
-      if ($('optMusic').checked && files.music) items.push({ path: files.music, kind: 'music', name: 'Music' });
-      if ($('optNoise').checked && files.noise) items.push({ path: files.noise, kind: 'noise', name: 'Noise' });
+      if ($('optMusic').checked && files.music) items.push({ path: files.music, kind: 'music', muted: true, name: 'Music' });
+      if ($('optNoise').checked && files.noise) items.push({ path: files.noise, kind: 'noise', muted: true, name: 'Noise' });
 
       if (!items.length) {
         setProgress(100);
